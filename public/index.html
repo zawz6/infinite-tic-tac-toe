@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Infinite Tic-Tac-Toe Pro</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root { 
+            --bg: #0f172a; --cell: #1e293b; --accent: #38bdf8; 
+            --p1: #22c55e; --p2: #ef4444; 
+        }
+        
+        body { 
+            font-family: 'Inter', sans-serif; background: var(--bg); color: white; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            min-height: 100dvh; margin: 0; touch-action: manipulation;
+        }
+
+        /* MENU OVERLAY */
+        #menu-overlay { 
+            position: fixed; inset: 0; background: var(--bg); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            z-index: 100; text-align: center; 
+        }
+
+        .btn { 
+            padding: 15px 30px; border: none; border-radius: 12px; 
+            font-weight: bold; cursor: pointer; background: var(--accent); 
+            margin: 10px; font-size: 1rem; width: 220px; color: #0f172a;
+        }
+
+        .rematch-btn {
+            background: var(--p1);
+            display: none; /* Hidden until game over */
+            width: auto;
+            margin-top: 10px;
+        }
+
+        .input-box { 
+            padding: 12px; border-radius: 8px; border: 1px solid #334155; 
+            background: #1e293b; color: white; margin-bottom: 10px; width: 200px;
+        }
+
+        .scoreboard { 
+            display: flex; gap: 30px; margin-bottom: 10px; background: #1e293b; 
+            padding: 12px 30px; border-radius: 50px; border: 1px solid #334155; 
+        }
+
+        .grid-container { position: relative; padding: 10px; }
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, min(28vw, 100px)); 
+            grid-template-rows: repeat(3, min(28vw, 100px)); 
+            gap: 12px; 
+        }
+        .cell { 
+            background: var(--cell); display: flex; align-items: center; 
+            justify-content: center; font-size: 2.5rem; font-weight: bold; 
+            border-radius: 15px; cursor: pointer; -webkit-tap-highlight-color: transparent; 
+        }
+        
+        .X { color: var(--p1); text-shadow: 0 0 10px var(--p1); }
+        .O { color: var(--p2); text-shadow: 0 0 10px var(--p2); }
+        .fading { opacity: 0.15; transform: scale(0.85); transition: 0.4s; }
+
+        #win-line { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
+        #strike { stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 0.5s; }
+    </style>
+</head>
+<body>
+
+    <div id="menu-overlay">
+        <h1 style="color:var(--accent); font-size: 2rem;">Infinite Tic-Tac-Toe</h1>
+        <div style="background: #1e293b; padding: 20px; border-radius: 20px;">
+            <button class="btn" onclick="initGame('local')">LOCAL (1 Device)</button>
+            <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
+            <input type="text" id="roomInput" class="input-box" placeholder="Room Name">
+            <button class="btn" style="background: #fff;" onclick="initGame('online')">ONLINE (Join Room)</button>
+        </div>
+    </div>
+
+    <div class="scoreboard">
+        <div>X: <span id="scoreX" style="color:var(--p1)">0</span></div>
+        <div>O: <span id="scoreO" style="color:var(--p2)">0</span></div>
+    </div>
+
+    <div id="status" style="margin-bottom:10px; font-weight:bold; color: var(--accent);">Waiting...</div>
+    
+    <button id="rematchBtn" class="btn rematch-btn" onclick="handleRematchRequest()">PLAY AGAIN?</button>
+
+    <div class="grid-container">
+        <svg id="win-line" viewBox="0 0 324 324"><line id="strike" x1="0" y1="0" x2="0" y2="0" /></svg>
+        <div class="grid">
+            <div class="cell" data-index="0" onclick="tap(0)"></div>
+            <div class="cell" data-index="1" onclick="tap(1)"></div>
+            <div class="cell" data-index="2" onclick="tap(2)"></div>
+            <div class="cell" data-index="3" onclick="tap(3)"></div>
+            <div class="cell" data-index="4" onclick="tap(4)"></div>
+            <div class="cell" data-index="5" onclick="tap(5)"></div>
+            <div class="cell" data-index="6" onclick="tap(6)"></div>
+            <div class="cell" data-index="7" onclick="tap(7)"></div>
+            <div class="cell" data-index="8" onclick="tap(8)"></div>
+        </div>
+    </div>
+
+    <button class="btn" style="background:#475569; color:white; width:auto; margin-top:20px;" onclick="location.reload()">Back to Menu</button>
+
+    <script>
+        const socket = (typeof io !== 'undefined') ? io() : null;
+        let mode = null, myRole = 'X', currentPlayer = 'X', roomID = '';
+        let moves = { X: [], O: [] }, gameOver = false, audioCtx, scores = { X: 0, O: 0 };
+
+        function initGame(type) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            mode = type;
+            document.getElementById('menu-overlay').style.display = 'none';
+
+            if (mode === 'local') {
+                document.getElementById('status').innerText = "Local Mode: X's Turn";
+            } else {
+                roomID = document.getElementById('roomInput').value;
+                if (!roomID || !socket) {
+                    alert("Room name required!"); location.reload(); return;
+                }
+                socket.emit('joinRoom', roomID);
+            }
+        }
+
+        function tap(index) {
+            if (gameOver) return;
+            if (mode === 'local') {
+                handleLocalMove(index);
+            } else if (mode === 'online' && socket) {
+                if (currentPlayer === myRole) socket.emit('makeMove', { roomID, index });
+            }
+        }
+
+        function handleLocalMove(index) {
+            const cell = document.querySelector(`[data-index="${index}"]`);
+            if (cell.innerText !== "") return;
+
+            if (moves[currentPlayer].length === 3) {
+                const oldest = moves[currentPlayer].shift();
+                const oldCell = document.querySelector(`[data-index="${oldest}"]`);
+                oldCell.innerText = ""; oldCell.classList.remove('X', 'O', 'fading');
+                playSound(150, 0.2);
+            }
+
+            cell.innerText = currentPlayer; cell.classList.add(currentPlayer);
+            moves[currentPlayer].push(index);
+            playSound(currentPlayer === 'X' ? 440 : 554, 0.15);
+
+            const win = checkWin(moves[currentPlayer]);
+            if (win) handleWin(win, currentPlayer);
+            else {
+                currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+                document.getElementById('status').innerText = `${currentPlayer}'s Turn`;
+                updateFading();
+            }
+        }
+
+        function checkWin(pMoves) {
+            const combos = [
+                {c:[0,1,2], l:[10,50,314,50]}, {c:[3,4,5], l:[10,162,314,162]}, {c:[6,7,8], l:[10,274,314,274]},
+                {c:[0,3,6], l:[50,10,50,314]}, {c:[1,4,7], l:[162,10,162,314]}, {c:[2,5,8], l:[274,10,274,314]},
+                {c:[0,4,8], l:[10,10,314,314]}, {c:[2,4,6], l:[314,10,10,314]}
+            ];
+            return combos.find(win => win.c.every(idx => pMoves.includes(idx)));
+        }
+
+        function handleWin(win, role) {
+            gameOver = true;
+            scores[role]++;
+            document.getElementById(`score${role}`).innerText = scores[role];
+            document.getElementById('status').innerText = `PLAYER ${role} WINS!`;
+            
+            const line = document.getElementById('strike');
+            line.setAttribute('x1', win.l[0]); line.setAttribute('y1', win.l[1]);
+            line.setAttribute('x2', win.l[2]); line.setAttribute('y2', win.l[3]);
+            document.getElementById('win-line').style.display = 'block';
+            setTimeout(() => { line.style.strokeDashoffset = 0; }, 10);
+            
+            // SHOW REMATCH BUTTON
+            document.getElementById('rematchBtn').style.display = 'block';
+            playSound(800, 0.5);
+        }
+
+        // Logic to trigger the rematch
+        function handleRematchRequest() {
+            if (mode === 'local') {
+                resetBoard();
+            } else {
+                socket.emit('requestRematch', roomID);
+            }
+        }
+
+        function resetBoard() {
+            moves = { X: [], O: [] };
+            currentPlayer = 'X';
+            gameOver = false;
+            document.querySelectorAll('.cell').forEach(c => { c.innerText = ""; c.className = "cell"; });
+            document.getElementById('win-line').style.display = 'none';
+            document.getElementById('strike').style.strokeDashoffset = 400;
+            document.getElementById('rematchBtn').style.display = 'none';
+            if (mode === 'local') document.getElementById('status').innerText = "X's Turn";
+        }
+
+        function updateFading() {
+            document.querySelectorAll('.cell').forEach(c => c.classList.remove('fading'));
+            ['X','O'].forEach(p => { if(moves[p].length === 3) document.querySelector(`[data-index="${moves[p][0]}"]`).classList.add('fading'); });
+        }
+
+        function playSound(f, d) {
+            if(!audioCtx) return;
+            let o = audioCtx.createOscillator(), g = audioCtx.createGain();
+            o.type = 'triangle'; o.frequency.value = f;
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + d);
+            o.connect(g); g.connect(audioCtx.destination);
+            o.start(); o.stop(audioCtx.currentTime + d);
+        }
+
+        // --- ONLINE SOCKET LISTENERS ---
+        if (socket) {
+            socket.on('playerRole', role => { 
+                myRole = role; document.getElementById('status').innerText = `Online: You are ${role}`;
+            });
+
+            socket.on('updateBoard', ({ index, role, win }) => {
+                const cell = document.querySelector(`[data-index="${index}"]`);
+                cell.innerText = role; cell.classList.add(role);
+                moves[role].push(index); 
+                playSound(role === 'X' ? 440 : 554, 0.15);
+                if (win) handleWin(win, role);
+                else { currentPlayer = role === 'X' ? 'O' : 'X'; updateFading(); }
+            });
+
+            socket.on('removePiece', index => {
+                const cell = document.querySelector(`[data-index="${index}"]`);
+                cell.innerText = ""; cell.className = "cell";
+                ['X','O'].forEach(p => moves[p] = moves[p].filter(i => i !== index));
+                playSound(150, 0.2);
+            });
+
+            // Catch the server's rematch trigger
+            socket.on('rematchTrigger', () => { resetBoard(); });
+        }
+    </script>
+</body>
+</html>
