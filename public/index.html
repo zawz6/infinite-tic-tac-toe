@@ -76,6 +76,15 @@
         #win-line { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
         #strike { stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 0.5s; }
         .rematch-btn { background: var(--p1); display: none; width: auto; margin-top: 10px; }
+        .role-badge {
+    background: #1e293b;
+    border: 1px solid var(--accent);
+    padding: 5px 15px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    display: none; /* Hidden until game starts */
+}
     </style>
 </head>
 <body>
@@ -94,7 +103,7 @@
             <button class="btn" style="background: #fff;" onclick="initGame('online')">ONLINE (Join Room)</button>
         </div>
     </div>
-
+    <div id="roleBadge" class="role-badge">You are Player <span id="myRoleText">?</span></div>
     <div class="scoreboard">
         <div>X: <span id="scoreX" style="color:var(--p1)">0</span></div>
         <div>O: <span id="scoreO" style="color:var(--p2)">0</span></div>
@@ -228,29 +237,27 @@
         }
 
         if (socket) {
+            // Tells you who you are
             socket.on('playerRole', role => { 
-                myRole = role; document.getElementById('status').innerText = `You are ${role}`;
+                myRole = role; 
+                const badge = document.getElementById('roleBadge');
+                badge.style.display = 'block';
+                badge.style.borderColor = (role === 'X') ? 'var(--p1)' : 'var(--p2)';
+                document.getElementById('myRoleText').innerText = role;
+                document.getElementById('myRoleText').className = role;
             });
-            socket.on('updateBoard', ({ index, role, win }) => {
-                const cell = document.querySelector(`[data-index="${index}"]`);
-                cell.innerText = role; cell.classList.add(role);
-                moves[role].push(index); 
-                playSound(role === 'X' ? 440 : 554, 0.15);
-                if (win) handleWin(win, role);
-                else { 
-                    currentPlayer = role === 'X' ? 'O' : 'X'; 
-                    updateFading(); 
-                }
+
+            // Tells you when the OTHER person joins
+            socket.on('opponentJoined', msg => {
+                document.getElementById('status').innerText = msg;
+                document.getElementById('status').style.color = 'var(--p1)';
+                setTimeout(() => {
+                    document.getElementById('status').innerText = "Player X's Turn";
+                    document.getElementById('status').style.color = 'var(--accent)';
+                }, 2000);
             });
-            socket.on('removePiece', index => {
-                const cell = document.querySelector(`[data-index="${index}"]`);
-                cell.innerText = ""; cell.className = "cell";
-                ['X','O'].forEach(p => moves[p] = moves[p].filter(i => i !== index));
-                updateFading();
-                playSound(150, 0.2);
-            });
-            socket.on('rematchTrigger', resetBoard);
-            socket.on('statusUpdate', msg => { if(!gameOver) document.getElementById('status').innerText = msg; });
+
+            // ... keep the rest of your listeners (updateBoard, removePiece, etc.)
         }
     </script>
 </body>
