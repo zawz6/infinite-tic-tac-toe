@@ -150,12 +150,21 @@
 
         function tap(index) {
             if (gameOver) return;
-            if (mode === 'local') handleLocalMove(index);
-            else if (mode === 'online' && socket && currentPlayer === myRole) {
+            
+            if (mode === 'local') {
+                handleLocalMove(index);
+            } else if (mode === 'online' && socket) {
+                if (!gameActive) {
+                    document.getElementById('status').innerText = "Wait for opponent!";
+                    return;
+                }
+                if (currentPlayer !== myRole) {
+                    document.getElementById('status').innerText = "Not your turn!";
+                    return;
+                }
                 socket.emit('makeMove', { roomID, index });
             }
         }
-
         function handleLocalMove(index) {
             const cell = document.querySelector(`[data-index="${index}"]`);
             if (cell.innerText !== "") return;
@@ -258,6 +267,7 @@
             });
 
             // ... keep the rest of your listeners (updateBoard, removePiece, etc.)
+            
         }
     </script>
 </body>
