@@ -26,7 +26,6 @@ io.on('connection', (socket) => {
             rooms[roomID].players[socket.id] = role;
             socket.emit('playerRole', role);
 
-            // Trigger start for BOTH players when the 2nd one joins
             if (Object.keys(rooms[roomID].players).length === 2) {
                 rooms[roomID].active = true;
                 io.to(roomID).emit('gameStart', "Opponent Joined! Player X's Turn");
@@ -45,6 +44,10 @@ io.on('connection', (socket) => {
 
         const role = room.players[socket.id];
         if (role !== room.turn) return;
+
+        // --- BUG FIX: Check if square is already taken ---
+        const occupied = room.moves.X.includes(index) || room.moves.O.includes(index);
+        if (occupied) return; 
 
         if (room.moves[role].length === 3) {
             const oldest = room.moves[role].shift();
