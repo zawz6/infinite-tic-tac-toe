@@ -12,10 +12,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 let rooms = {};
 
 io.on('connection', (socket) => {
-    socket.on('joinRoom', (roomID) => {
+    socket.on('joinRoom', (rawRoomID) => {
+        const roomID = rawRoomID.trim().toLowerCase();
         socket.join(roomID);
+
         if (!rooms[roomID]) {
-            rooms[roomID] = { players: {}, moves: { X: [], O: [] }, turn: 'X' };
+            rooms[roomID] = { players: {}, moves: { X: [], O: [] }, turn: 'X', active: false };
         }
 
         const playersInRoom = Object.keys(rooms[roomID].players);
@@ -24,11 +26,12 @@ io.on('connection', (socket) => {
             rooms[roomID].players[socket.id] = role;
             socket.emit('playerRole', role);
 
-            // If this is the 2nd player joining, tell everyone the game is ready
-            if (playersInRoom.length === 1) {
-                io.to(roomID).emit('opponentJoined', "Opponent Joined! Game Starting...");
+            // Trigger start for BOTH players when the 2nd one joins
+            if (Object.keys(rooms[roomID].players).length === 2) {
+                rooms[roomID].active = true;
+                io.to(roomID).emit('gameStart', "Opponent Joined! Player X's Turn");
             } else {
-                socket.emit('statusUpdate', "Waiting for opponent...");
+                socket.emit('statusUpdate', "Waiting for player 2...");
             }
         } else {
             socket.emit('error', 'Room is full');
@@ -36,32 +39,39 @@ io.on('connection', (socket) => {
     });
 
     socket.on('makeMove', ({ roomID, index }) => {
-        const room = rooms[roomID];
-        if (!room) return;
+        const rID = roomID.trim().toLowerCase();
+        const room = rooms[rID];
+        if (!room || !room.active) return;
+
         const role = room.players[socket.id];
         if (role !== room.turn) return;
 
         if (room.moves[role].length === 3) {
             const oldest = room.moves[role].shift();
-            io.to(roomID).emit('removePiece', oldest);
+            io.to(rID).emit('removePiece', oldest);
         }
 
         room.moves[role].push(index);
         const win = checkWin(room.moves[role]);
-        io.to(roomID).emit('updateBoard', { index, role, win });
+        io.to(rID).emit('updateBoard', { index, role, win });
 
         if (!win) {
             room.turn = room.turn === 'X' ? 'O' : 'X';
-            io.to(roomID).emit('statusUpdate', `Player ${room.turn}'s Turn`);
+            io.to(rID).emit('statusUpdate', `Player ${room.turn}'s Turn`);
+        } else {
+            room.active = false;
         }
     });
 
-    socket.on('requestRematch', (roomID) => {
-        const room = rooms[roomID];
+    socket.on('requestRematch', (rawRoomID) => {
+        const rID = rawRoomID.trim().toLowerCase();
+        const room = rooms[rID];
         if (room) {
             room.moves = { X: [], O: [] };
             room.turn = 'X';
-            io.to(roomID).emit('rematchTrigger');
+            room.active = true;
+            io.to(rID).emit('rematchTrigger');
+            io.to(rID).emit('statusUpdate', "Player X's Turn");
         }
     });
 });
@@ -70,13 +80,8 @@ function checkWin(moves) {
     const combos = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
     const win = combos.find(c => c.every(idx => moves.includes(idx)));
     if (!win) return null;
-    const lines = {
-        '0,1,2': [10,50,314,50], '3,4,5': [10,162,314,162], '6,7,8': [10,274,314,274],
-        '0,3,6': [50,10,50,314], '1,4,7': [162,10,162,314], '2,5,8': [274,10,274,314],
-        '0,4,8': [10,10,314,314], '2,4,6': [314,10,10,314]
-    };
+    const lines = {'0,1,2':[10,50,314,50],'3,4,5':[10,162,314,162],'6,7,8':[10,274,314,274],'0,3,6':[50,10,50,314],'1,4,7':[162,10,162,314],'2,5,8':[274,10,274,314],'0,4,8':[10,10,314,314],'2,4,6':[314,10,10,314]};
     return { combo: win, l: lines[win.join(',')] };
 }
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(process.env.PORT || 3000);
