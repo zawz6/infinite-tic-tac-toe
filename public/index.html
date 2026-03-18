@@ -13,41 +13,38 @@
         }
         
         body { 
-            font-family: 'Inter', sans-serif; background: var(--bg); color: white; 
+            font-family: -apple-system, system-ui, sans-serif;
+            background: var(--bg); color: white; 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
             min-height: 100dvh; margin: 0; touch-action: manipulation;
         }
 
-        /* MENU OVERLAY */
+        /* --- INTRO OVERLAY --- */
         #menu-overlay { 
             position: fixed; inset: 0; background: var(--bg); 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            z-index: 100; text-align: center; 
+            z-index: 100; text-align: center; padding: 20px;
         }
-
+        .intro-card {
+            background: #1e293b; padding: 30px; border-radius: 25px; 
+            border: 2px solid var(--accent); box-shadow: 0 0 20px rgba(56, 189, 248, 0.2);
+            max-width: 350px; width: 100%;
+        }
         .btn { 
             padding: 15px 30px; border: none; border-radius: 12px; 
             font-weight: bold; cursor: pointer; background: var(--accent); 
-            margin: 10px; font-size: 1rem; width: 220px; color: #0f172a;
+            margin: 10px 0; font-size: 1rem; width: 100%; color: #0f172a;
         }
-
-        .rematch-btn {
-            background: var(--p1);
-            display: none; /* Hidden until game over */
-            width: auto;
-            margin-top: 10px;
-        }
-
         .input-box { 
             padding: 12px; border-radius: 8px; border: 1px solid #334155; 
-            background: #1e293b; color: white; margin-bottom: 10px; width: 200px;
+            background: #0f172a; color: white; margin-bottom: 5px; width: 90%; text-align: center;
         }
 
+        /* --- GAME UI --- */
         .scoreboard { 
             display: flex; gap: 30px; margin-bottom: 10px; background: #1e293b; 
             padding: 12px 30px; border-radius: 50px; border: 1px solid #334155; 
         }
-
         .grid-container { position: relative; padding: 10px; }
         .grid { 
             display: grid; 
@@ -63,19 +60,36 @@
         
         .X { color: var(--p1); text-shadow: 0 0 10px var(--p1); }
         .O { color: var(--p2); text-shadow: 0 0 10px var(--p2); }
-        .fading { opacity: 0.15; transform: scale(0.85); transition: 0.4s; }
+        
+        /* --- THE GHOSTING EFFECT --- */
+        .fading { 
+            opacity: 0.25; 
+            filter: blur(1px);
+            animation: pulseGhost 1.5s infinite ease-in-out;
+        }
+        @keyframes pulseGhost {
+            0% { transform: scale(1); opacity: 0.25; }
+            50% { transform: scale(0.9); opacity: 0.1; }
+            100% { transform: scale(1); opacity: 0.25; }
+        }
 
         #win-line { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
         #strike { stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 0.5s; }
+        .rematch-btn { background: var(--p1); display: none; width: auto; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div id="menu-overlay">
-        <h1 style="color:var(--accent); font-size: 2rem;">Infinite Tic-Tac-Toe</h1>
-        <div style="background: #1e293b; padding: 20px; border-radius: 20px;">
+        <div class="intro-card">
+            <h1 style="color:var(--accent); margin-top: 0;">How to Play</h1>
+            <p style="text-align: left; font-size: 0.95rem; line-height: 1.6; background: #0f172a; padding: 15px; border-radius: 12px;">
+                • Max <b>3 pieces</b> per player.<br>
+                • Your <b>oldest piece</b> will pulse.<br>
+                • It disappears when you place your 4th!
+            </p>
             <button class="btn" onclick="initGame('local')">LOCAL (1 Device)</button>
-            <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
+            <div style="margin: 5px 0; opacity: 0.3;">OR</div>
             <input type="text" id="roomInput" class="input-box" placeholder="Room Name">
             <button class="btn" style="background: #fff;" onclick="initGame('online')">ONLINE (Join Room)</button>
         </div>
@@ -87,7 +101,6 @@
     </div>
 
     <div id="status" style="margin-bottom:10px; font-weight:bold; color: var(--accent);">Waiting...</div>
-    
     <button id="rematchBtn" class="btn rematch-btn" onclick="handleRematchRequest()">PLAY AGAIN?</button>
 
     <div class="grid-container">
@@ -105,7 +118,7 @@
         </div>
     </div>
 
-    <button class="btn" style="background:#475569; color:white; width:auto; margin-top:20px;" onclick="location.reload()">Back to Menu</button>
+    <button class="btn" style="background:#475569; color:white; width:auto; margin-top:30px;" onclick="location.reload()">Back to Menu</button>
 
     <script>
         const socket = (typeof io !== 'undefined') ? io() : null;
@@ -115,32 +128,29 @@
         function initGame(type) {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             mode = type;
-            document.getElementById('menu-overlay').style.display = 'none';
-
-            if (mode === 'local') {
-                document.getElementById('status').innerText = "Local Mode: X's Turn";
-            } else {
+            if (mode === 'online') {
                 roomID = document.getElementById('roomInput').value;
-                if (!roomID || !socket) {
-                    alert("Room name required!"); location.reload(); return;
-                }
+                if (!roomID) return alert("Enter a room name!");
+                if (!socket) return alert("Connecting... try again in a few seconds.");
                 socket.emit('joinRoom', roomID);
+            } else {
+                document.getElementById('status').innerText = "X's Turn";
             }
+            document.getElementById('menu-overlay').style.display = 'none';
         }
 
         function tap(index) {
             if (gameOver) return;
-            if (mode === 'local') {
-                handleLocalMove(index);
-            } else if (mode === 'online' && socket) {
-                if (currentPlayer === myRole) socket.emit('makeMove', { roomID, index });
+            if (mode === 'local') handleLocalMove(index);
+            else if (mode === 'online' && socket && currentPlayer === myRole) {
+                socket.emit('makeMove', { roomID, index });
             }
         }
 
         function handleLocalMove(index) {
             const cell = document.querySelector(`[data-index="${index}"]`);
             if (cell.innerText !== "") return;
-
+            
             if (moves[currentPlayer].length === 3) {
                 const oldest = moves[currentPlayer].shift();
                 const oldCell = document.querySelector(`[data-index="${oldest}"]`);
@@ -151,7 +161,7 @@
             cell.innerText = currentPlayer; cell.classList.add(currentPlayer);
             moves[currentPlayer].push(index);
             playSound(currentPlayer === 'X' ? 440 : 554, 0.15);
-
+            
             const win = checkWin(moves[currentPlayer]);
             if (win) handleWin(win, currentPlayer);
             else {
@@ -171,45 +181,41 @@
         }
 
         function handleWin(win, role) {
-            gameOver = true;
-            scores[role]++;
+            gameOver = true; scores[role]++;
             document.getElementById(`score${role}`).innerText = scores[role];
             document.getElementById('status').innerText = `PLAYER ${role} WINS!`;
-            
+            const svg = document.getElementById('win-line');
             const line = document.getElementById('strike');
             line.setAttribute('x1', win.l[0]); line.setAttribute('y1', win.l[1]);
             line.setAttribute('x2', win.l[2]); line.setAttribute('y2', win.l[3]);
-            document.getElementById('win-line').style.display = 'block';
+            svg.style.display = 'block';
             setTimeout(() => { line.style.strokeDashoffset = 0; }, 10);
-            
-            // SHOW REMATCH BUTTON
             document.getElementById('rematchBtn').style.display = 'block';
             playSound(800, 0.5);
         }
 
-        // Logic to trigger the rematch
         function handleRematchRequest() {
-            if (mode === 'local') {
-                resetBoard();
-            } else {
-                socket.emit('requestRematch', roomID);
-            }
+            if (mode === 'local') resetBoard();
+            else if (socket) socket.emit('requestRematch', roomID);
         }
 
         function resetBoard() {
-            moves = { X: [], O: [] };
-            currentPlayer = 'X';
-            gameOver = false;
+            moves = { X: [], O: [] }; currentPlayer = 'X'; gameOver = false;
             document.querySelectorAll('.cell').forEach(c => { c.innerText = ""; c.className = "cell"; });
             document.getElementById('win-line').style.display = 'none';
             document.getElementById('strike').style.strokeDashoffset = 400;
             document.getElementById('rematchBtn').style.display = 'none';
-            if (mode === 'local') document.getElementById('status').innerText = "X's Turn";
+            document.getElementById('status').innerText = mode === 'local' ? "X's Turn" : "New Round!";
         }
 
         function updateFading() {
             document.querySelectorAll('.cell').forEach(c => c.classList.remove('fading'));
-            ['X','O'].forEach(p => { if(moves[p].length === 3) document.querySelector(`[data-index="${moves[p][0]}"]`).classList.add('fading'); });
+            ['X','O'].forEach(p => { 
+                if(moves[p].length === 3) {
+                    const el = document.querySelector(`[data-index="${moves[p][0]}"]`);
+                    if(el) el.classList.add('fading');
+                }
+            });
         }
 
         function playSound(f, d) {
@@ -221,30 +227,30 @@
             o.start(); o.stop(audioCtx.currentTime + d);
         }
 
-        // --- ONLINE SOCKET LISTENERS ---
         if (socket) {
             socket.on('playerRole', role => { 
-                myRole = role; document.getElementById('status').innerText = `Online: You are ${role}`;
+                myRole = role; document.getElementById('status').innerText = `You are ${role}`;
             });
-
             socket.on('updateBoard', ({ index, role, win }) => {
                 const cell = document.querySelector(`[data-index="${index}"]`);
                 cell.innerText = role; cell.classList.add(role);
                 moves[role].push(index); 
                 playSound(role === 'X' ? 440 : 554, 0.15);
                 if (win) handleWin(win, role);
-                else { currentPlayer = role === 'X' ? 'O' : 'X'; updateFading(); }
+                else { 
+                    currentPlayer = role === 'X' ? 'O' : 'X'; 
+                    updateFading(); 
+                }
             });
-
             socket.on('removePiece', index => {
                 const cell = document.querySelector(`[data-index="${index}"]`);
                 cell.innerText = ""; cell.className = "cell";
                 ['X','O'].forEach(p => moves[p] = moves[p].filter(i => i !== index));
+                updateFading();
                 playSound(150, 0.2);
             });
-
-            // Catch the server's rematch trigger
-            socket.on('rematchTrigger', () => { resetBoard(); });
+            socket.on('rematchTrigger', resetBoard);
+            socket.on('statusUpdate', msg => { if(!gameOver) document.getElementById('status').innerText = msg; });
         }
     </script>
 </body>
