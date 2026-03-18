@@ -9,23 +9,19 @@
     <style>
         :root { --bg: #0f172a; --cell: #1e293b; --accent: #38bdf8; --p1: #22c55e; --p2: #ef4444; }
         body { font-family: sans-serif; background: var(--bg); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100dvh; margin: 0; touch-action: manipulation; }
-        
         #menu-overlay { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 20px; }
         .intro-card { background: #1e293b; padding: 30px; border-radius: 25px; border: 1px solid #334155; max-width: 350px; width: 100%; }
         .btn { padding: 15px 30px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; background: var(--accent); margin: 10px 0; font-size: 1rem; width: 100%; color: #0f172a; }
         .input-box { padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; margin-bottom: 5px; width: 90%; text-align: center; }
-
         .role-badge { background: #1e293b; border: 1px solid var(--accent); padding: 8px 20px; border-radius: 12px; font-size: 0.9rem; margin-bottom: 15px; display: none; font-weight: bold; }
         .scoreboard { display: flex; gap: 30px; margin-bottom: 10px; background: #1e293b; padding: 12px 30px; border-radius: 50px; border: 1px solid #334155; }
         .grid-container { position: relative; padding: 10px; }
         .grid { display: grid; grid-template-columns: repeat(3, min(28vw, 100px)); grid-template-rows: repeat(3, min(28vw, 100px)); gap: 12px; }
         .cell { background: var(--cell); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; border-radius: 15px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        
         .X { color: var(--p1); text-shadow: 0 0 10px var(--p1); }
         .O { color: var(--p2); text-shadow: 0 0 10px var(--p2); }
         .fading { opacity: 0.25; animation: pulseGhost 1.5s infinite ease-in-out; }
         @keyframes pulseGhost { 0%, 100% { transform: scale(1); opacity: 0.25; } 50% { transform: scale(0.9); opacity: 0.1; } }
-
         #win-line { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; display: none; }
         #strike { stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 0.5s; }
         .rematch-btn { background: var(--p1); display: none; width: auto; margin-top: 10px; }
@@ -90,6 +86,11 @@
 
         function tap(index) {
             if (gameOver) return;
+
+            // --- BUG FIX: Check if cell is occupied locally before emitting ---
+            const cell = document.querySelector(`[data-index="${index}"]`);
+            if (cell.innerText !== "") return; 
+
             if (mode === 'local') handleLocalMove(index);
             else if (mode === 'online' && socket && gameActive && currentPlayer === myRole) {
                 socket.emit('makeMove', { roomID, index });
@@ -98,7 +99,6 @@
 
         function handleLocalMove(index) {
             const cell = document.querySelector(`[data-index="${index}"]`);
-            if (cell.innerText !== "") return;
             if (moves[currentPlayer].length === 3) {
                 const oldest = moves[currentPlayer].shift();
                 const oldCell = document.querySelector(`[data-index="${oldest}"]`);
