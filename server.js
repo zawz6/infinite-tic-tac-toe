@@ -7,36 +7,37 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files from the "public" folder
 app.use(express.static(path.join(__dirname, 'public')));
 
 let rooms = {};
 
 io.on('connection', (socket) => {
-    // JOIN ROOM
     socket.on('joinRoom', (roomID) => {
         socket.join(roomID);
         if (!rooms[roomID]) {
             rooms[roomID] = { players: {}, moves: { X: [], O: [] }, turn: 'X' };
         }
 
-        const playerCount = Object.keys(rooms[roomID].players).length;
-        if (playerCount < 2) {
-            const role = playerCount === 0 ? 'X' : 'O';
+        const playersInRoom = Object.keys(rooms[roomID].players);
+        if (playersInRoom.length < 2) {
+            const role = playersInRoom.length === 0 ? 'X' : 'O';
             rooms[roomID].players[socket.id] = role;
             socket.emit('playerRole', role);
+
+            // If this is the 2nd player joining, tell everyone the game is ready
+            if (playersInRoom.length === 1) {
+                io.to(roomID).emit('opponentJoined', "Opponent Joined! Game Starting...");
+            } else {
+                socket.emit('statusUpdate', "Waiting for opponent...");
+            }
         } else {
             socket.emit('error', 'Room is full');
         }
-
-        io.to(roomID).emit('statusUpdate', `Player ${rooms[roomID].turn}'s Turn`);
     });
 
-    // MAKE MOVE
     socket.on('makeMove', ({ roomID, index }) => {
         const room = rooms[roomID];
         if (!room) return;
-
         const role = room.players[socket.id];
         if (role !== room.turn) return;
 
@@ -47,7 +48,6 @@ io.on('connection', (socket) => {
 
         room.moves[role].push(index);
         const win = checkWin(room.moves[role]);
-        
         io.to(roomID).emit('updateBoard', { index, role, win });
 
         if (!win) {
@@ -56,7 +56,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // REMATCH
     socket.on('requestRematch', (roomID) => {
         const room = rooms[roomID];
         if (room) {
